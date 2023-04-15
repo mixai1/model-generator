@@ -9,7 +9,7 @@ public class GeneratorOptions {
 
     public ConvertType[] ConvertTypes { get; set; }
 
-    public string Compaild { get; set; }
+    public string Compiled { get; set; }
 
     public bool? SkipTsFormInterfaces { get; set; }
 
