@@ -7,69 +7,88 @@ public class Generator {
     private string _basePath;
 
     public void Process(GeneratorOptions options) {
-        if (options == null || !options.Sources.Any() || !options.ConvertTypes.Any()) {
+        if (options == null) {
+            throw new Exception("options incorrect");
+        }
+
+        if (
+            !options.Sources.Any() ||
+            !options.ConvertTypes.Any() ||
+            string.IsNullOrEmpty(options.Compiled) ||
+            string.IsNullOrEmpty(options.Files?.FirstOrDefault())
+           ) {
             throw new Exception("options incorrect");
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         AppDomain.CurrentDomain.AssemblyResolve += ResolveAssembly;
+        var generalTypes = new HashSet<Type>();
 
         foreach (var source in options.Sources) {
-            _basePath = AbsolutePath(Path.Combine(source, options.Compaild));
+            try {
+                _basePath = AbsolutePath(Path.Combine(source, options.Compiled));
 
-            Console.Write("Scanning for DTO objects in {0}...  ", _basePath);
-            var strs = options.Files.SelectMany(f => Directory.GetFiles(_basePath, f));
-            var assemblies = strs.Select(Load).Where(a => a != null);
-            var list = assemblies.SelectMany(x => GetApiControllers(x, _basePath)).ToList();
-            var types = new HashSet<Type>(list);
-            var array = types.ToArray();
-            foreach (var t in array) {
-                RecursivelySearchModels(t, types);
+                Console.Write("Scanning for DTO objects in {0}...  ", source);
+                var strs = options.Files.SelectMany(f => Directory.GetFiles(_basePath, f));
+                var assemblies = strs.Select(Load).Where(a => a != null);
+                var list = assemblies.SelectMany(x => GetAssemblyTypes(x, source)).ToList();
+                var types = new HashSet<Type>(list);
+                var array = types.ToArray();
+                foreach (var t in array) {
+                    RecursivelySearchModels(t, types);
+                    generalTypes.Add(t);
+                }
+
+                Console.ForegroundColor = types.Count > 0 ? ConsoleColor.Green : ConsoleColor.Yellow;
+                Console.WriteLine("Found {0}", types.Count);
+                Console.ResetColor();
+            } catch (DirectoryNotFoundException e) {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"IGNORED {e.Message}");
+                Console.ResetColor();
+            }
+        }
+
+        Console.WriteLine($"generalTypes Count: {generalTypes.Count}");
+
+        foreach (var convertType in options.ConvertTypes) {
+            var modelTargetPath = GetDestinationPath(convertType, options);
+            if (Directory.Exists(modelTargetPath)) {
+                Directory.Delete(modelTargetPath, true);
             }
 
-            Console.ForegroundColor = types.Count > 0 ? ConsoleColor.Green : ConsoleColor.Yellow;
-            Console.WriteLine("Found {0}", types.Count);
-            Console.ResetColor();
-            foreach (var convertType in options.ConvertTypes) {
-                var modelTargetPath = GetDestinationPath(convertType, options);
-                if (Directory.Exists(modelTargetPath)) {
-                    Directory.Delete(modelTargetPath, true);
+            Directory.CreateDirectory(modelTargetPath);
+            EntityGenerator.Generate(modelTargetPath, generalTypes, convertType, options);
+
+            if (convertType == ConvertType.Kt) {
+                Directory.CreateDirectory(Path.Combine(modelTargetPath, "interfaces"));
+                EntityGenerator.GenerateKtInterfaces(options.KtPackageName, modelTargetPath);
+                if (options.KtUseRealmDb ?? false) {
+                    Directory.CreateDirectory(Path.Combine(modelTargetPath, "realm"));
+                    Directory.CreateDirectory(Path.Combine(modelTargetPath, "helpers"));
+                    EntityGenerator.GenerateKtRealmListConverter(options.KtPackageName, modelTargetPath);
+                }
+            }
+
+            if (convertType == ConvertType.Swift && (options.SwiftUseRealmDb ?? false)) {
+                Directory.CreateDirectory(Path.Combine(modelTargetPath, "protocols"));
+                EntityGenerator.GenerateSwiftProtocols(modelTargetPath);
+            }
+
+            if (convertType == ConvertType.Ts && !(options.SkipTsFormInterfaces ?? false)) {
+                var interfaceTargetPath = GetDestinationPath(convertType, options, true);
+                if (Directory.Exists(interfaceTargetPath)) {
+                    Directory.Delete(interfaceTargetPath, true);
                 }
 
-                Directory.CreateDirectory(modelTargetPath);
-
-                if (convertType == ConvertType.Kt) {
-                    Directory.CreateDirectory(Path.Combine(modelTargetPath, "interfaces"));
-                    EntityGenerator.GenerateKtInterfaces(options.KtPackageName, modelTargetPath);
-                    if (options.KtUseRealmDb ?? false) {
-                        Directory.CreateDirectory(Path.Combine(modelTargetPath, "realm"));
-                        Directory.CreateDirectory(Path.Combine(modelTargetPath, "helpers"));
-                        EntityGenerator.GenerateKtRealmListConverter(options.KtPackageName, modelTargetPath);
-                    }
-                }
-
-                if (convertType == ConvertType.Swift && (options.SwiftUseRealmDb ?? false)) {
-                    Directory.CreateDirectory(Path.Combine(modelTargetPath, "protocols"));
-                    EntityGenerator.GenerateSwiftProtocols(modelTargetPath);
-                }
-                EntityGenerator.Generate(modelTargetPath, types, convertType, options);
-
-                if (convertType == ConvertType.Ts && !(options.SkipTsFormInterfaces ?? false)) {
-                    var interfaceTargetPath = GetDestinationPath(convertType, options, true);
-                    if (Directory.Exists(interfaceTargetPath)) {
-                        Directory.Delete(interfaceTargetPath, true);
-                    }
-
-                    Directory.CreateDirectory(interfaceTargetPath);
-                    EntityGenerator.Generate(interfaceTargetPath, types, convertType, options, true);
-                }
+                Directory.CreateDirectory(interfaceTargetPath);
+                EntityGenerator.Generate(interfaceTargetPath, generalTypes, convertType, options, true);
             }
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("Done in {0:N3}s", stopwatch.Elapsed.TotalSeconds);
             Console.ResetColor();
         }
-
     }
 
     private string AbsolutePath(string relativePath) {
@@ -78,14 +97,10 @@ public class Generator {
             : Path.Combine(Environment.CurrentDirectory, relativePath);
     }
 
-    private IEnumerable<Type> GetApiControllers(Assembly a, string path) {
-        var filesName = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(AbsolutePath(path), "*", SearchOption.AllDirectories)) {
-            filesName.Add(Path.GetFileNameWithoutExtension(file).ToLower());
-        }
-        return a.GetTypes().Where(t =>
-            filesName.Contains(t.Name.ToLower()) && !(t.Name.ToLower().Contains("sync")) ||
-            t.IsAbstract && !(t.IsAbstract && t.IsSealed)).ToList();
+    private IEnumerable<Type> GetAssemblyTypes(Assembly a, string path) {
+        var filesName = Directory.EnumerateFiles(AbsolutePath(path), "*", SearchOption.AllDirectories).Select(Path.GetFileNameWithoutExtension).ToList();
+        var assembly = a.GetTypes().Where(t => filesName.Any(x => x.Contains(t.Name) || t.Name.Contains(x))).ToList();
+        return assembly;
     }
 
     private IEnumerable<Type> GetModelTypes(Type t) {
@@ -134,7 +149,7 @@ public class Generator {
         try {
             var str = Path.Combine(_basePath,
                 string.Concat(args.Name.Substring(0, args.Name.IndexOf(",", StringComparison.Ordinal)), ".dll"));
-             assembly = Assembly.Load(File.ReadAllBytes(str));
+            assembly = Assembly.Load(File.ReadAllBytes(str));
         } catch {
             Console.WriteLine(args.Name);
             assembly = null;
