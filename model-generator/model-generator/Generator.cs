@@ -7,8 +7,11 @@ public class Generator {
     private string _basePath;
 
     public void Process(GeneratorOptions options) {
+        if (options == null) {
+            throw new Exception("options incorrect");
+        }
+
         if (
-            options == null ||
             !options.Sources.Any() ||
             !options.ConvertTypes.Any() ||
             string.IsNullOrEmpty(options.Compiled) ||
@@ -25,7 +28,7 @@ public class Generator {
             try {
                 _basePath = AbsolutePath(Path.Combine(source, options.Compiled));
 
-                Console.Write("Scanning for DTO objects in {0}...  ", _basePath);
+                Console.Write("Scanning for DTO objects in {0}...  ", source);
                 var strs = options.Files.SelectMany(f => Directory.GetFiles(_basePath, f));
                 var assemblies = strs.Select(Load).Where(a => a != null);
                 var list = assemblies.SelectMany(x => GetAssemblyTypes(x, source)).ToList();
@@ -35,8 +38,6 @@ public class Generator {
                     RecursivelySearchModels(t, types);
                     generalTypes.Add(t);
                 }
-
-                Console.WriteLine($"count types: {types.Count}");
 
                 Console.ForegroundColor = types.Count > 0 ? ConsoleColor.Green : ConsoleColor.Yellow;
                 Console.WriteLine("Found {0}", types.Count);
@@ -83,11 +84,11 @@ public class Generator {
                 Directory.CreateDirectory(interfaceTargetPath);
                 EntityGenerator.Generate(interfaceTargetPath, generalTypes, convertType, options, true);
             }
-        }
 
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("Done in {0:N3}s", stopwatch.Elapsed.TotalSeconds);
-        Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Done in {0:N3}s", stopwatch.Elapsed.TotalSeconds);
+            Console.ResetColor();
+        }
     }
 
     private string AbsolutePath(string relativePath) {
@@ -97,22 +98,8 @@ public class Generator {
     }
 
     private IEnumerable<Type> GetAssemblyTypes(Assembly a, string path) {
-        var filesName = Directory.EnumerateFiles(AbsolutePath(path), "*", SearchOption.AllDirectories)
-            .Select(x => Path.GetFileNameWithoutExtension(x).ToLower())
-            .ToList();
-
-        Console.WriteLine($"count filesName: {filesName.Count}");
-
-        var assembly = a.GetTypes()
-            .Where(t => filesName
-            .Contains(
-                        t.Name.ToLower()) &&
-                        !(t.Name.ToLower().Contains("sync")) ||
-                        t.IsAbstract &&
-                        !(t.IsAbstract && t.IsSealed)
-                     )
-            .ToList();
-        Console.WriteLine($"count assembly: {assembly.Count}");
+        var filesName = Directory.EnumerateFiles(AbsolutePath(path), "*", SearchOption.AllDirectories).Select(Path.GetFileNameWithoutExtension).ToList();
+        var assembly = a.GetTypes().Where(t => filesName.Any(x => x.Contains(t.Name) || t.Name.Contains(x))).ToList();
         return assembly;
     }
 

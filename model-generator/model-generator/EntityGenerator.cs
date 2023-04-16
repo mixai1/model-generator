@@ -15,32 +15,34 @@ public static class EntityGenerator {
     /// <param name="skipDayjs"></param>
     /// <returns>string</returns>
     private static string CreateModelTsString(Type t, ConvertType convertType, bool skipDayjs) {
-        string str = string.Concat((t.IsAbstract ? "export abstract class " : "export class "), t.Name).Replace("`1", "<T>").Replace("`2", "<T, U>");
-        string baseTypeName = t.BaseType == null || !t.BaseType.IsModelType() ? "" : t.BaseType.Name;
+        var className = t.Name.Replace("`1", "<T>").Replace("`2", "<T, U>");
+        string str = GetStr(t, className);
+        Console.WriteLine($"Class name1: {className}");
+        string baseTypeName = GetBaseTypeName(t);
         string str1 = baseTypeName.Replace("`1", "").Replace("`2", "");
         string str3 = baseTypeName;
         string str4 = baseTypeName.Replace("`1", "<T>").Replace("`2", "<T, U>");
+        var import = new List<string>();
         if (t.BaseType != null && t.BaseType.IsModelType() && t.BaseType.GenericTypeArguments.Length > 0) {
             str3 = ConcatGenericArguments(t.BaseType, skipDayjs, false);
+            foreach (var parameter in t.BaseType.GenericTypeArguments.Where(x => x.IsModelType())) {
+                import.Add(parameter.Name);
+            }
         }
+
         NameAndType[] allPropertiesInType = t.GetAllPropertiesInType(skipDayjs, false, convertType);
-        StringBuilder stringBuilder = new();
-        if (allPropertiesInType.Any(p => p.Type == "dayjs.Dayjs" || p.Type == "dayjs.Dayjs?")) {
-            stringBuilder.AppendLine("import * as dayjs from 'dayjs';");
-            stringBuilder.AppendLine("import * as utc from 'dayjs/plugin/utc';");
-            stringBuilder.AppendLine();
-        }
-        List<string> import = new();
+        var stringBuilder = new StringBuilder();
+        BuildDayjsProperties(allPropertiesInType, stringBuilder);
         if (!string.IsNullOrWhiteSpace(str1)) {
             import.Add(str1);
         }
+
         import.AddRange(FindTypesToImport(t));
-        var sorted = import.Distinct().OrderBy(x => x).ToList();
-        for (int i = 0; i < sorted.Count; i++) {
-            string str2 = sorted[i];
+        for (int i = 0; i < import.Count; i++) {
+            string str2 = import[i];
             stringBuilder.AppendLine(
                 $"import {{ {str2} }} from './{GetFileName(str2).Replace("-Model", ".model").ToLower()}';");
-            if (i == sorted.Count - 1) {
+            if (i == import.Count - 1) {
                 stringBuilder.AppendLine();
             }
         }
@@ -57,7 +59,8 @@ public static class EntityGenerator {
         if (!t.IsAbstract) {
             stringBuilder.AppendLine();
             stringBuilder.AppendLine(TabToSpace(1) + "public constructor(");
-            stringBuilder.AppendLine(string.Format(TabToSpace(2) + "fields?: Partial<{0}>) {{", t.Name));
+            stringBuilder.AppendLine(string.Format(TabToSpace(2) + "fields?: Partial<{0}>) {{", className));
+            Console.WriteLine($"Class name2: {className}");
             stringBuilder.AppendLine();
             if (!string.IsNullOrWhiteSpace(str1)) {
                 stringBuilder.AppendLine(TabToSpace(2) + "super(fields);");
@@ -85,6 +88,7 @@ public static class EntityGenerator {
             stringBuilder.AppendLine();
             stringBuilder.AppendLine(TabToSpace(1) + "public constructor(");
             stringBuilder.AppendLine(string.Format(TabToSpace(2) + "fields?: Partial<{0}>) {{", t.Name.Replace("`1", "<T>").Replace("`2", "<T, U>")));
+            Console.WriteLine($"Class t.Name: {t.Name}");
             stringBuilder.AppendLine();
             if (!string.IsNullOrWhiteSpace(str1)) {
                 stringBuilder.AppendLine(TabToSpace(2) + "super(fields);");
@@ -100,6 +104,27 @@ public static class EntityGenerator {
         }
         stringBuilder.AppendLine("}");
         return stringBuilder.ToString();
+    }
+
+    private static string GetStr(Type t, string className) {
+        return string.Concat((t.IsAbstract ? "export abstract class " : "export class "), className);
+    }
+
+    private static string GetBaseTypeName(Type t) {
+        return t.BaseType == null || !t.BaseType.IsModelType() ? "" : t.BaseType.Name;
+    }
+
+    private static void BuildDayjsProperties(NameAndType[] allPropertiesInType, StringBuilder stringBuilder) {
+        if (allPropertiesInType.Any(p => {
+            if (p.Type == "dayjs.Dayjs") {
+                return true;
+            }
+            return p.Type == "dayjs.Dayjs?";
+        })) {
+            stringBuilder.AppendLine("import * as dayjs from 'dayjs';");
+            stringBuilder.AppendLine("import * as utc from 'dayjs/plugin/utc';");
+            stringBuilder.AppendLine();
+        }
     }
 
     /// <summary>
@@ -630,12 +655,12 @@ public static class EntityGenerator {
                 from p in parentType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
                 where p.DeclaringType == parentType || p.DeclaringType == parentType.DeclaringType
                 select p.GetPropertyType() into t
-                where t.IsModelType()
+                where t.IsModelType() || t.IsModelGenericType()
                 select t into x
                 where x != parentType
                 select x).Distinct()
             orderby p.Name
-            select p.Name).ToArray();
+            select p.Name.Replace("`1", string.Empty)).ToArray();
     }
 
     /// <summary>
@@ -783,7 +808,7 @@ public static class EntityGenerator {
     /// </summary>
     /// <param name="count"></param>
     /// <returns>string</returns>
-    public static string TabToSpace(int count) {
+    private static string TabToSpace(int count) {
         StringBuilder stringBuilder = new();
         for (int i = 0; i < count; i++) {
             stringBuilder.Append("    ");
