@@ -17,7 +17,6 @@ public static class EntityGenerator {
     private static string CreateModelTsString(Type t, ConvertType convertType, bool skipDayjs) {
         var className = t.Name.Replace("`1", "<T>").Replace("`2", "<T, U>");
         string str = GetStr(t, className);
-        Console.WriteLine($"Class name1: {className}");
         string baseTypeName = GetBaseTypeName(t);
         string str1 = baseTypeName.Replace("`1", "").Replace("`2", "");
         string str3 = baseTypeName;
@@ -60,7 +59,6 @@ public static class EntityGenerator {
             stringBuilder.AppendLine();
             stringBuilder.AppendLine(TabToSpace(1) + "public constructor(");
             stringBuilder.AppendLine(string.Format(TabToSpace(2) + "fields?: Partial<{0}>) {{", className));
-            Console.WriteLine($"Class name2: {className}");
             stringBuilder.AppendLine();
             if (!string.IsNullOrWhiteSpace(str1)) {
                 stringBuilder.AppendLine(TabToSpace(2) + "super(fields);");
@@ -88,7 +86,6 @@ public static class EntityGenerator {
             stringBuilder.AppendLine();
             stringBuilder.AppendLine(TabToSpace(1) + "public constructor(");
             stringBuilder.AppendLine(string.Format(TabToSpace(2) + "fields?: Partial<{0}>) {{", t.Name.Replace("`1", "<T>").Replace("`2", "<T, U>")));
-            Console.WriteLine($"Class t.Name: {t.Name}");
             stringBuilder.AppendLine();
             if (!string.IsNullOrWhiteSpace(str1)) {
                 stringBuilder.AppendLine(TabToSpace(2) + "super(fields);");

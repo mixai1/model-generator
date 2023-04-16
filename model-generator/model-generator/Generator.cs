@@ -49,8 +49,6 @@ public class Generator {
             }
         }
 
-        Console.WriteLine($"generalTypes Count: {generalTypes.Count}");
-
         foreach (var convertType in options.ConvertTypes) {
             var modelTargetPath = GetDestinationPath(convertType, options);
             if (Directory.Exists(modelTargetPath)) {

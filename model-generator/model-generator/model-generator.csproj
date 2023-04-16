@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Title>model-generator</Title>
-    <Version>1.1.0</Version>
+    <Version>1.1.11</Version>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/mixai1/model-generator</RepositoryUrl>
   </PropertyGroup>
