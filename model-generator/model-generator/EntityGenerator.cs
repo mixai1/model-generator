@@ -16,13 +16,24 @@ public static class EntityGenerator {
     /// <returns>string</returns>
     private static string CreateModelTsString(Type t, ConvertType convertType, bool skipDayjs) {
         var className = t.Name.Replace("`1", "<T>").Replace("`2", "<T, U>");
-        string str = GetStr(t, className);
+        string str = GetFullClassName(t, className);
         Console.WriteLine($"Class name1: {className}");
         string baseTypeName = GetBaseTypeName(t);
         string str1 = baseTypeName.Replace("`1", "").Replace("`2", "");
         string str3 = baseTypeName;
         string str4 = baseTypeName.Replace("`1", "<T>").Replace("`2", "<T, U>");
         var import = new List<string>();
+
+        var property = t.GetProperties(BindingFlags.Instance | BindingFlags.Public).SelectMany(x => x.CustomAttributes).ToList();
+        skipDayjs = skipDayjs && !property.Any(x => Utils.UseUnixAttributeName.Equals(x.AttributeType.Name));
+
+        foreach (var attribute in property) {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(attribute.AttributeType.Name);
+            Console.ResetColor();
+        }
+        Console.WriteLine($"skipDayJs {skipDayjs}");
+
         if (t.BaseType != null && t.BaseType.IsModelType() && t.BaseType.GenericTypeArguments.Length > 0) {
             str3 = ConcatGenericArguments(t.BaseType, skipDayjs, false);
             foreach (var parameter in t.BaseType.GenericTypeArguments.Where(x => x.IsModelType())) {
@@ -106,12 +117,12 @@ public static class EntityGenerator {
         return stringBuilder.ToString();
     }
 
-    private static string GetStr(Type t, string className) {
+    private static string GetFullClassName(Type t, string className) {
         return string.Concat((t.IsAbstract ? "export abstract class " : "export class "), className);
     }
 
     private static string GetBaseTypeName(Type t) {
-        return t.BaseType == null || !t.BaseType.IsModelType() ? "" : t.BaseType.Name;
+        return t.BaseType == null || !t.BaseType.IsModelType() ? string.Empty : t.BaseType.Name;
     }
 
     private static void BuildDayjsProperties(NameAndType[] allPropertiesInType, StringBuilder stringBuilder) {

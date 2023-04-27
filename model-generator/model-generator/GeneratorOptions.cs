@@ -7,8 +7,6 @@ public class GeneratorOptions {
 
     public string[] Sources { get; set; }
 
-    public ConvertType[] ConvertTypes { get; set; }
-
     public string Compiled { get; set; }
 
     public bool? SkipTsFormInterfaces { get; set; }

@@ -3,6 +3,7 @@
 namespace model_generator;
 
 public static class Utils {
+    public static readonly string UseUnixAttributeName = "UseUnixAttribute";
     private static readonly List<string> IgnoreAttributes = new() {
         typeof(System.Text.Json.Serialization.JsonIgnoreAttribute).FullName,
         typeof(Newtonsoft.Json.JsonIgnoreAttribute).FullName
@@ -370,6 +371,10 @@ public static class Utils {
             return t.GetGenericArguments()[0].ToTypeScriptType(skipDayjs, isInterface);
         }
         if (t == typeof(DateTime)) {
+            Console.ForegroundColor = ConsoleColor.Red;
+            var result = skipDayjs && !ContainsCustomAttributeName(t.CustomAttributes, UseUnixAttributeName);
+            Console.WriteLine($"UseUnix result: {result} - skipDayJS {skipDayjs}");
+            Console.ResetColor();
             var type = skipDayjs ? "number" : "dayjs.Dayjs";
             return isInterface ? $"FormControl<{type}>" : type;
         }
@@ -458,5 +463,13 @@ public static class Utils {
     /// <returns>string</returns>
     public static string GetLower(string str) {
         return char.ToLower(str[0]) + str.Substring(1);
+    }
+
+    public static bool ContainsCustomAttributeName(IEnumerable<CustomAttributeData> customAttributes, string customAttributeName) {
+        if (string.IsNullOrEmpty(customAttributeName) && (!customAttributes?.Any() ?? true)) {
+            return false;
+        }
+
+        return customAttributes.Any(x => customAttributeName.Equals(x.AttributeType.Name));
     }
 }

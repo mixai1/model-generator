@@ -6,18 +6,19 @@ namespace model_generator;
 public class Generator {
     private string _basePath;
 
-    public void Process(GeneratorOptions options) {
-        if (options == null) {
-            throw new Exception("options incorrect");
-        }
+    public void Process(GeneratorOptions options, string[] convertTo = null) {
+        options ??= new GeneratorOptions();
 
-        if (
-            !options.Sources.Any() ||
-            !options.ConvertTypes.Any() ||
-            string.IsNullOrEmpty(options.Compiled) ||
-            string.IsNullOrEmpty(options.Files?.FirstOrDefault())
-           ) {
-            throw new Exception("options incorrect");
+        var convertTypes = new HashSet<ConvertType>();
+        if (convertTo?.Any() ?? false) {
+            foreach (var type in convertTo) {
+                if (Enum.TryParse(type, true, out ConvertType result)) {
+                    convertTypes.Add(result);
+                }
+            }
+        }
+        if (!convertTypes.Any()) {
+            convertTypes.Add(ConvertType.Ts);
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -51,14 +52,13 @@ public class Generator {
 
         Console.WriteLine($"generalTypes Count: {generalTypes.Count}");
 
-        foreach (var convertType in options.ConvertTypes) {
+        foreach (var convertType in convertTypes) {
             var modelTargetPath = GetDestinationPath(convertType, options);
             if (Directory.Exists(modelTargetPath)) {
                 Directory.Delete(modelTargetPath, true);
             }
 
             Directory.CreateDirectory(modelTargetPath);
-            EntityGenerator.Generate(modelTargetPath, generalTypes, convertType, options);
 
             if (convertType == ConvertType.Kt) {
                 Directory.CreateDirectory(Path.Combine(modelTargetPath, "interfaces"));
@@ -74,6 +74,8 @@ public class Generator {
                 Directory.CreateDirectory(Path.Combine(modelTargetPath, "protocols"));
                 EntityGenerator.GenerateSwiftProtocols(modelTargetPath);
             }
+
+            EntityGenerator.Generate(modelTargetPath, generalTypes, convertType, options);
 
             if (convertType == ConvertType.Ts && !(options.SkipTsFormInterfaces ?? false)) {
                 var interfaceTargetPath = GetDestinationPath(convertType, options, true);
@@ -99,8 +101,7 @@ public class Generator {
 
     private IEnumerable<Type> GetAssemblyTypes(Assembly a, string path) {
         var filesName = Directory.EnumerateFiles(AbsolutePath(path), "*", SearchOption.AllDirectories).Select(Path.GetFileNameWithoutExtension).ToList();
-        var assembly = a.GetTypes().Where(t => filesName.Any(x => x.Contains(t.Name) || t.Name.Contains(x))).ToList();
-        return assembly;
+        return a.GetTypes().Where(t => filesName.Any(x => x.Contains(t.Name) || t.Name.Contains(x))).ToList();
     }
 
     private IEnumerable<Type> GetModelTypes(Type t) {
